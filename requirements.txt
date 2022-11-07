@@ -1,0 +1,5 @@
+beautifulsoup4==4.11.1
+lxml==4.9.1
+pyTelegramBotAPI==4.7.1
+python-decouple==3.6
+python-telegram-bot-calendar==1.0.5
