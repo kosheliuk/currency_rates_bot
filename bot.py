@@ -1,6 +1,7 @@
 from telebot import TeleBot, types
-
-from constants import BOT_TOKEN, CURRENCIES
+import emoji
+import re
+from constants import BOT_TOKEN, CURRENCIES, FAVORITES_CURRENCIES, OTHER_CURRENCIES
 from parser import get_minfin_data
 from telegram_bot_calendar import DetailedTelegramCalendar, LSTEP
 
@@ -13,7 +14,6 @@ bot.set_my_commands([
     types.BotCommand("/help", "Print Usage"),
 ])
 
-# TODO: pretty output
 # TODO: connect db
 # TODO: translate to ukrainian and english
 # TODO: customize bot for users
@@ -31,6 +31,19 @@ def get_usage_info(msg: types.Message):
         " \n{shft}review rate for specific date.".format(shft="\t"*4),
         parse_mode="Markdown"
     )
+
+
+def generate_keyboard_buttons(
+        keyboard: types.ReplyKeyboardMarkup, currencies: dict, row_size: int
+) -> types.ReplyKeyboardMarkup:
+    buttons = [
+        types.KeyboardButton(emoji.emojize(flag, language="alias") + " " + currency.upper())
+        for currency, flag in currencies.items()
+    ]
+    buttons_per_row = [buttons[i:i + row_size] for i in range(0, len(buttons), row_size)]
+    for row in buttons_per_row:
+        keyboard.row(*row)
+    return keyboard
 
 
 @bot.message_handler(commands=["date"])
@@ -59,31 +72,25 @@ def cal(c):
 
 @bot.message_handler()
 def get_currencies_list(msg: types.Message):
-    msg_text = msg.text.lower()
-    if msg_text in CURRENCIES:
-        text = get_minfin_data(msg.text.lower())
+    msg_text = re.sub(":.*?:", "", emoji.demojize(msg.text)).strip(" ").lower()
+    if msg_text in CURRENCIES.keys():
+        text = get_minfin_data(msg_text)
         bot.send_message(
             msg.chat.id,
-            text
+            text,
+            parse_mode="html"
         )
         return
-    match msg_text:
-        case "other":
-            keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            keyboard.add(types.KeyboardButton("Back"))
-            [keyboard.add(types.KeyboardButton(cur.upper())) for cur in CURRENCIES[4:]]
-            bot.send_message(
-                msg.chat.id,
-                "Select Currency: ",
-                reply_markup=keyboard,
-            )
-        case _:
-            keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            [keyboard.add(types.KeyboardButton(cur.upper())) for cur in CURRENCIES[:4]]
-            keyboard.add(types.KeyboardButton("Other"))
-            bot.send_message(
-                msg.chat.id,
-                "Select Currency: ",
-                reply_markup=keyboard,
-            )
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    if msg_text == "other":
+        keyboard.add(types.KeyboardButton(emoji.emojize(":arrow_left:", language="alias") + " " + "Back"))
+        keyboard = generate_keyboard_buttons(keyboard, OTHER_CURRENCIES, 5)
+    else:
+        keyboard = generate_keyboard_buttons(keyboard, FAVORITES_CURRENCIES, 2)
+        keyboard.add(types.KeyboardButton("Other" + " " + emoji.emojize(":arrow_right:", language="alias")))
+    bot.send_message(
+        msg.chat.id,
+        "Select Currency: ",
+        reply_markup=keyboard,
+        )
     return

@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup as bs
 import requests
 from constants import RESOURCE_URL
+import prettytable as pt
 
 
 def parse_response(soup):
@@ -15,9 +16,15 @@ def parse_response(soup):
 
 
 def get_minfin_data(currency):
+    # TODO: add restriction for max bank in one message
     r = requests.get(RESOURCE_URL + currency)
     soup = bs(r.text, features="lxml")
-    msg = "Bank{shft}Сash Register{shft}Card".format(shft="\t"*4)
-    for k, v in parse_response(soup).items():
-        msg += f"\n{k}\t{v['bank']}\t{v['card']}"
+    table = pt.PrettyTable(["Bank", "Cash Register(Bit/Ask)", "Card(Bit/Ask)"])
+    banks_number = 0
+    for bank, rate in parse_response(soup).items():
+        if banks_number == 25:
+            break
+        table.add_row([bank, rate["bank"], rate["card"]])
+        banks_number += 1
+    msg = "<pre>{}</pre>".format(table)
     return msg
