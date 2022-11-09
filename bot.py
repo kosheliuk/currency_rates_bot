@@ -37,10 +37,11 @@ def parse_response(page: BeautifulSoup) -> dict:
 def get_rates(currency: str, date: str = None) -> str:
     if date is None:
         date = datetime.today().strftime("%Y-%m-%d")
-    msg = "Bank\tCash Register\tCard"
+    msg = "*Bank:\t\tCash Register(Bit/Ask)\t\tCard(Bit/Ask)*"
     rates = database.select_currency_rate(date, currency)
     for obj in rates:
-        msg += f"\n{obj['key'].split('#')[-1]}\t{obj['cash']}\t{obj['card']}"
+        format_card_value = " / ".join(obj["card"].split("/"))
+        msg += f"\n*{obj['key'].split('#')[-1]}*: {obj['cash']}\t\t\t{format_card_value}"
     if not rates:
         res = requests.get(RESOURCE_URL + currency + "/" + date)
         page = bs(res.text, features="lxml")
@@ -53,10 +54,10 @@ def get_rates(currency: str, date: str = None) -> str:
                     "card": rate["card"]
                 }
             )
-            msg += f"\n{bank}\t{rate['bank']}\t{rate['card']}"
+            format_card_value = " / ".join(rate["card"].split("/"))
+            msg += f"\n*{bank}*: {rate['bank']}\t\t\t{format_card_value}"
         if object_to_insert:
             database.insert_currency_rates(object_to_insert)
-    msg = "<pre>{}</pre>".format(msg)
     return msg
 
 
@@ -130,7 +131,7 @@ def get_currency_rate(msg: types.Message, **kwargs):
         bot.send_message(
             msg.chat.id,
             text,
-            parse_mode="html"
+            parse_mode="Markdown"
         )
     else:
         keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
