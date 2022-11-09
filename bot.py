@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup as bs, BeautifulSoup
 from telebot import TeleBot, types
 from telegram_bot_calendar import DetailedTelegramCalendar, LSTEP
 
-from constants import BOT_TOKEN, CURRENCIES, DATABASE_URL, DB_NAME, FAVORITES_CURRENCIES, OTHER_CURRENCIES
+from constants import BOT_TOKEN, CURRENCIES, DATABASE_URL, DB_NAME
 from constants import RESOURCE_URL
 from db import Database
 
@@ -17,8 +17,7 @@ database = Database(conn=DATABASE_URL, name=DB_NAME)
 bot.set_my_commands(
     [
         types.BotCommand("/start", "Main Menu"),
-        types.BotCommand("/bank", "Select Bank"),  # TODO: to be implemented
-        types.BotCommand("/date", "Select Data"),  # TODO: to be implemented
+        types.BotCommand("/date", "Select Data"),
         types.BotCommand("/help", "Print Usage"),
     ]
 )
@@ -66,10 +65,48 @@ def get_usage_info(msg: types.Message):
     bot.send_message(
         msg.chat.id,
         "Use this bot to check actual information about currency rates using _Ukrainian Minfin_ data.\n"
-        "*Possible actions:* \n{shft}check rate of specific currency, \n{shft}check rate of specific bank,"
-        " \n{shft}review rate for specific date.".format(shft="\t" * 4),
+        "*Possible actions:* check rate of specific currency and review rate for specific date.",
         parse_mode="Markdown"
     )
+
+
+@bot.message_handler(commands=["date"])
+def get_calendar(msg: types.Message):
+    calendar, step = DetailedTelegramCalendar().build()
+    bot.send_message(
+        msg.chat.id,
+        f"Select {LSTEP[step].capitalize()}",
+        reply_markup=calendar
+    )
+
+
+@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
+def select_date(clb: types.CallbackQuery):
+    date, key, step = DetailedTelegramCalendar().process(clb.data)
+    if not date and key:
+        bot.edit_message_text(
+            f"Select {LSTEP[step].capitalize()}",
+            clb.message.chat.id,
+            clb.message.message_id,
+            reply_markup=key
+        )
+    elif date:
+        if date > datetime.today().date():
+            bot.edit_message_text(
+                f"Selected Date is *{date}*. "
+                f"\n_Unfortunately I can't travel in time. Please select a date in the past_",
+                clb.message.chat.id,
+                clb.message.message_id,
+                parse_mode="Markdown"
+            )
+        else:
+            send = bot.edit_message_text(
+                f"Selected Date is *{date}*. Now Select a Currency: ",
+                clb.message.chat.id,
+                clb.message.message_id,
+                parse_mode="Markdown"
+            )
+            bot.register_next_step_handler(send, get_currency_rate, date=date.strftime("%Y-%m-%d"))
 
 
 def generate_keyboard_buttons(
@@ -86,54 +123,20 @@ def generate_keyboard_buttons(
 
 
 @bot.message_handler()
-def get_currencies_list(msg: types.Message):
+def get_currency_rate(msg: types.Message, **kwargs):
     msg_text = re.sub(":.*?:", "", emoji.demojize(msg.text)).strip(" ").lower()
     if msg_text in CURRENCIES.keys():
-        text = get_rates(msg_text)
+        text = get_rates(msg_text, date=kwargs.get("date"))
         bot.send_message(
             msg.chat.id,
             text,
             parse_mode="html"
         )
-        return
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    if msg_text == "other":
-        keyboard.add(types.KeyboardButton(emoji.emojize(":arrow_left:", language="alias") + " " + "Back"))
-        keyboard = generate_keyboard_buttons(keyboard, OTHER_CURRENCIES, 5)
     else:
-        keyboard = generate_keyboard_buttons(keyboard, FAVORITES_CURRENCIES, 2)
-        keyboard.add(types.KeyboardButton("Other" + " " + emoji.emojize(":arrow_right:", language="alias")))
-    bot.send_message(
-        msg.chat.id,
-        "Select Currency: ",
-        reply_markup=keyboard,
-    )
-    return
-
-
-@bot.message_handler(commands=["date"])
-def get_calendar(msg: types.Message):
-    calendar, step = DetailedTelegramCalendar().build()
-    bot.send_message(
-        msg.chat.id,
-        f"Select {LSTEP[step]}",
-        reply_markup=calendar
-    )
-
-
-@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
-def cal(c):
-    result, key, step = DetailedTelegramCalendar().process(c.data)
-    if not result and key:
-        bot.edit_message_text(
-            f"Select {LSTEP[step]}",
-            c.message.chat.id,
-            c.message.message_id,
-            reply_markup=key
-        )
-    elif result:
-        bot.edit_message_text(
-            f"You selected {result}",
-            c.message.chat.id,
-            c.message.message_id
+        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        keyboard = generate_keyboard_buttons(keyboard, CURRENCIES, 4)
+        bot.send_message(
+            msg.chat.id,
+            "Select Currency: ",
+            reply_markup=keyboard,
         )
